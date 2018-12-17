@@ -70,7 +70,7 @@ if __name__ == "__main__":
     print("Index OK.")
 
     print("\nWord2vec loading ...")
-    w2v_model = Word2Vec.load_word2vec_format(config["w2v_model"], binary=True)
+    w2v_model = Word2Vec.load_word2vec_format(config["w2v_model"], binary=config["binary"])  # parameterizable
     print("\nWord2Vec OK.")
     stop = set(stopwords.words('english')) if config["stoplist"] else []
     kind = "_ptf" if config["if_pseudo_tf"] else "_tf"
@@ -87,7 +87,7 @@ if __name__ == "__main__":
                                        w2v_model, id2token) for document in documents_grp]
             # print(futures)
             for future in as_completed(futures):
-                print(future.result())
+                # print(future.result())
                 res_list.append(future.result())
         for res in res_list:
             id2dtf.update(res)

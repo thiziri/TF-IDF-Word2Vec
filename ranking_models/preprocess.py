@@ -31,7 +31,7 @@ if __name__ == "__main__":
     print("Index OK.")
 
     print("\nWord2vec loading ...")
-    w2v_model = Word2Vec.load_word2vec_format(config["w2v_model"], binary=True)
+    w2v_model = Word2Vec.load_word2vec_format(config["w2v_model"], binary=config["binary"])
     print("\nWord2Vec OK.")
     stop = set(stopwords.words('english')) if config["stoplist"] else []
     kind = "_ptf" if config["if_pseudo_tf"] else "_tf"
