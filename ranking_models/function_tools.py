@@ -25,13 +25,14 @@ def sigmoid(x):
     return 1.0 / (1.0 + math.exp(-20 * (x + 0.75)))
 
 
-def cossim(wt, wd, puis, model):
+def cossim(wt, wd, puis, model, sim_threshold):
     """
     cosine similarity between two words wt and wd, raised to power puis
     :param wt: str
     :param wd: str
     :param puis: int
     :param model: w2vec model
+    :param sim_threshold: float
     :return:
     """
     # cos with w2v
@@ -42,10 +43,12 @@ def cossim(wt, wd, puis, model):
     except:
         return 0.0
 
-    if s < 0 and puis % 2 == 0:
-        return -pow(s, puis)
-    # print(wt, wd, pow(s, puis))
-    return pow(s, puis)
+    if s > sim_threshold:
+        if s < 0 and puis % 2 == 0:
+            return -pow(s, puis)
+        # print(wt, wd, pow(s, puis))
+        return pow(s, puis)
+    return 0.0
 
 def cossim0(wt, wd, puis, model):
     if wt == wd:
@@ -125,7 +128,7 @@ def get_top_results(topics, qio, num):
     return resTop
 
 
-def pseudo_frequency(id2token, w, doc, model, alpha):
+def pseudo_frequency(id2token, w, doc, model, alpha, sim_threshold):
     """
     Computes the pseudo frequency based on sum of the w2vec similarities
     :param id2token: dict
@@ -133,12 +136,14 @@ def pseudo_frequency(id2token, w, doc, model, alpha):
     :param doc: list
     :param model: object
     :param alpha: int
+    :param sim_threshold: float
     :return: float
     """
-    return sum([cossim(id2token[w], id2token[wd], alpha, model) for wd in doc])
+    return sum([cossim(id2token[w], id2token[wd], alpha, model, sim_threshold) for wd in doc])
 
 
-def allD_allQ_sim(resTop, index, top_t, id2token, w2v_model, cl, alpha, unit_score, parameters, if_psedo_tf):
+def allD_allQ_sim(resTop, index, top_t, id2token, w2v_model, cl, alpha, unit_score, parameters, if_psedo_tf, id2dtf,
+                  sim_threshold):
     """
     Similarity score using the equation [2] in the CORIA'18 paper
     :param resTop: list
@@ -151,22 +156,26 @@ def allD_allQ_sim(resTop, index, top_t, id2token, w2v_model, cl, alpha, unit_sco
     :param unit_score: str
     :param parameters: dict
     :param if_psedo_tf: bool
+    :param id2dtf: dict
+    :param sim_threshold: float
     :return: dict
     """
     sc_bm25 = {}
     # print(top_t)
     for d in resTop:
-        termFreq_d = defaultdict(int)
+        # termFreq_d = defaultdict(int)
         dl = index.document_length(d)
-        doc = [x for x in index.document(d)[1] if x > 0]  # get document words
+        # doc = [x for x in index.document(d)[1] if x > 0]  # get document words
         # print(d, len(doc))
         sc_bm25[d] = 0.0
         if if_psedo_tf:
-            for t in doc:
-                termFreq_d[t] = pseudo_frequency(id2token, t, doc, w2v_model, alpha)
+            # for t in doc:
+            #    termFreq_d[t] = pseudo_frequency(id2token, t, doc, w2v_model, alpha)
+            termFreq_d = id2dtf[d]
         else:
-            for t in doc:  # compute frequency of each word in that doc
-                termFreq_d[t] += 1
+            # for t in doc:  # compute frequency of each word in that doc
+            #    termFreq_d[t] += 1
+            termFreq_d = id2dtf[d]
 
         for tq in top_t:
             for t_d in termFreq_d:
@@ -175,20 +184,23 @@ def allD_allQ_sim(resTop, index, top_t, id2token, w2v_model, cl, alpha, unit_sco
                                                    dl, parameters["k1"], parameters["b"]) * cossim(id2token[tq],
                                                                                                    id2token[t_d],
                                                                                                    alpha,
-                                                                                                   w2v_model)
+                                                                                                   w2v_model,
+                                                                                                   sim_threshold)
                 elif unit_score == "okapi":
                     sc_bm25[d] += okapi_BM25_unit_score(parameters["id2df"][t_d], cl, parameters['avgdl'],
                                                         termFreq_d[t_d], dl, top_t.count(tq), parameters["k1"],
                                                         parameters["b"], parameters["k3"]) * cossim(id2token[tq],
                                                                                                     id2token[t_d],
                                                                                                     alpha,
-                                                                                                    w2v_model)
+                                                                                                    w2v_model,
+                                                                                                    sim_threshold)
                 else:
                     sc_bm25[d] += lm_unit_score(parameters['clmbda'], parameters['dlmbda'], termFreq_d[t_d], dl,
                                                 parameters["id2tf"][t_d], cl) * cossim(id2token[tq],
                                                                                        id2token[t_d],
                                                                                        alpha,
-                                                                                       w2v_model)
+                                                                                       w2v_model,
+                                                                                       sim_threshold)
                 # break
         # print(sc_bm25[d])
         # break
@@ -196,7 +208,7 @@ def allD_allQ_sim(resTop, index, top_t, id2token, w2v_model, cl, alpha, unit_sco
 
 
 def allD_QinD_notQinD_sim(resTop, index, top_t, id2token, w2v_model, cl, alpha, lamda, unit_score, parameters,
-                          if_psedo_tf):
+                          if_psedo_tf, id2dtf, sim_threshold):
     """
     Similarity score using the equation [3] in the CORIA'18 paper
     :param resTop: list
@@ -210,22 +222,27 @@ def allD_QinD_notQinD_sim(resTop, index, top_t, id2token, w2v_model, cl, alpha, 
     :param unit_score: str
     :param parameters: dict
     :param if_psedo_tf: bool
+    :param id2dtf: dict
+    :param sim_threshold: float
     :return: dict
     """
     sc_bm25 = {}
     for d in resTop:
         s_in = 0.0
         s_out = 0.0
-        termFreq_d = defaultdict(int)
+        # termFreq_d = defaultdict(int)
         dl = index.document_length(d)
-        doc = [x for x in index.document(d)[1] if x > 0]
+        # doc = [x for x in index.document(d)[1] if x > 0]  # get document words
+        # print(d, len(doc))
         sc_bm25[d] = 0.0
         if if_psedo_tf:
-            for t in doc:
-                termFreq_d[t] = pseudo_frequency(id2token, t, doc, w2v_model, alpha)
+            # for t in doc:
+            #    termFreq_d[t] = pseudo_frequency(id2token, t, doc, w2v_model, alpha)
+            termFreq_d = id2dtf[d]
         else:
-            for t in doc:  # compute frequency of each word in that doc
-                termFreq_d[t] += 1
+            # for t in doc:  # compute frequency of each word in that doc
+            #    termFreq_d[t] += 1
+            termFreq_d = id2dtf[d]
 
         termsIn = [w for w in set(top_t) & set(termFreq_d.keys())]
 
@@ -237,20 +254,23 @@ def allD_QinD_notQinD_sim(resTop, index, top_t, id2token, w2v_model, cl, alpha, 
                                                  dl, parameters["k1"], parameters["b"]) * cossim(id2token[tq],
                                                                                                  id2token[t_d1],
                                                                                                  alpha,
-                                                                                                 w2v_model)
+                                                                                                 w2v_model,
+                                                                                                 sim_threshold)
                     elif unit_score == "okapi":
                         s_in += okapi_BM25_unit_score(parameters["id2df"][t_d1], cl, parameters['avgdl'],
                                                       termFreq_d[t_d1], dl, top_t.count(tq), parameters["k1"],
                                                       parameters["b"], parameters["k3"]) * cossim(id2token[tq],
                                                                                                   id2token[t_d1],
                                                                                                   alpha,
-                                                                                                  w2v_model)
+                                                                                                  w2v_model,
+                                                                                                  sim_threshold)
                     else:
                         s_in += lm_unit_score(parameters['clmbda'], parameters['dlmbda'], termFreq_d[t_d1], dl,
                                               parameters["id2tf"][t_d1], cl) * cossim(id2token[tq],
                                                                                       id2token[t_d1],
                                                                                       alpha,
-                                                                                      w2v_model)
+                                                                                      w2v_model,
+                                                                                      sim_threshold)
             else:
                 for t_d in termFreq_d:
                     if unit_score == "tfidf":
@@ -258,26 +278,29 @@ def allD_QinD_notQinD_sim(resTop, index, top_t, id2token, w2v_model, cl, alpha, 
                                                   dl, parameters["k1"], parameters["b"]) * cossim(id2token[tq],
                                                                                                   id2token[t_d],
                                                                                                   alpha,
-                                                                                                  w2v_model)
+                                                                                                  w2v_model,
+                                                                                                  sim_threshold)
                     elif unit_score == "okapi":
                         s_out += okapi_BM25_unit_score(parameters["id2df"][t_d], cl, parameters['avgdl'],
                                                        termFreq_d[t_d], dl, top_t.count(tq), parameters["k1"],
                                                        parameters["b"], parameters["k3"]) * cossim(id2token[tq],
                                                                                                    id2token[t_d],
                                                                                                    alpha,
-                                                                                                   w2v_model)
+                                                                                                   w2v_model,
+                                                                                                   sim_threshold)
                     else:
                         s_out += lm_unit_score(parameters['clmbda'], parameters['dlmbda'], termFreq_d[t_d], dl,
                                                parameters["id2tf"][t_d], cl) * cossim(id2token[tq],
                                                                                       id2token[t_d],
                                                                                       alpha,
-                                                                                      w2v_model)
+                                                                                      w2v_model,
+                                                                                      sim_threshold)
         sc_bm25[d] += lamda * s_in + (1 - lamda) * s_out
     return sc_bm25
 
 
 def QinD_QinDothers_allD_QnotInDsim(resTop, index, top_t, id2token, w2v_model, cl, alpha, lamda1, lamda2, unit_score,
-                                    parameters, if_psedo_tf):
+                                    parameters, if_psedo_tf, id2dtf, sim_threshold):
     """
     Similarity score using the equation [4] in the CORIA'18 paper
     :param resTop: list
@@ -292,6 +315,8 @@ def QinD_QinDothers_allD_QnotInDsim(resTop, index, top_t, id2token, w2v_model, c
     :param unit_score: str
     :param parameters: dict
     :param if_psedo_tf: bool
+    :param id2dtf: dict
+    :param sim_threshold: float
     :return: dict
     """
     sc_bm25 = {}
@@ -299,16 +324,19 @@ def QinD_QinDothers_allD_QnotInDsim(resTop, index, top_t, id2token, w2v_model, c
         s_bm25 = 0.0
         s_in = 0.0
         s_out = 0.0
-        termFreq_d = defaultdict(int)
+        # termFreq_d = defaultdict(int)
         dl = index.document_length(d)
-        doc = [x for x in index.document(d)[1] if x > 0]
+        # doc = [x for x in index.document(d)[1] if x > 0]  # get document words
+        # print(d, len(doc))
         sc_bm25[d] = 0.0
         if if_psedo_tf:
-            for t in doc:
-                termFreq_d[t] = pseudo_frequency(id2token, t, doc, w2v_model, alpha)
+            # for t in doc:
+            #    termFreq_d[t] = pseudo_frequency(id2token, t, doc, w2v_model, alpha)
+            termFreq_d = id2dtf[d]
         else:
-            for t in doc:  # compute frequency of each word in that doc
-                termFreq_d[t] += 1
+            # for t in doc:  # compute frequency of each word in that doc
+            #    termFreq_d[t] += 1
+            termFreq_d = id2dtf[d]
 
         termsIn = [w for w in set(top_t) & set(termFreq_d.keys())]
 
@@ -334,20 +362,23 @@ def QinD_QinDothers_allD_QnotInDsim(resTop, index, top_t, id2token, w2v_model, c
                                                      dl, parameters["k1"], parameters["b"]) * cossim(id2token[tq],
                                                                                                      id2token[t_d1],
                                                                                                      alpha,
-                                                                                                     w2v_model)
+                                                                                                     w2v_model,
+                                                                                                     sim_threshold)
                         elif unit_score == "okapi":
                             s_in += okapi_BM25_unit_score(parameters["id2df"][t_d1], cl, parameters['avgdl'],
                                                           termFreq_d[t_d1], dl, top_t.count(tq), parameters["k1"],
                                                           parameters["b"], parameters["k3"]) * cossim(id2token[tq],
                                                                                                       id2token[t_d1],
                                                                                                       alpha,
-                                                                                                      w2v_model)
+                                                                                                      w2v_model,
+                                                                                                      sim_threshold)
                         else:
                             s_in += lm_unit_score(parameters['clmbda'], parameters['dlmbda'], termFreq_d[t_d1], dl,
                                                   parameters["id2tf"][t_d1], cl) * cossim(id2token[tq],
                                                                                           id2token[t_d1],
                                                                                           alpha,
-                                                                                          w2v_model)
+                                                                                          w2v_model,
+                                                                                          sim_threshold)
             else:
                 for t_d in termFreq_d:
                     if unit_score == "tfidf":
@@ -355,19 +386,22 @@ def QinD_QinDothers_allD_QnotInDsim(resTop, index, top_t, id2token, w2v_model, c
                                                   dl, parameters["k1"], parameters["b"]) * cossim(id2token[tq],
                                                                                                   id2token[t_d],
                                                                                                   alpha,
-                                                                                                  w2v_model)
+                                                                                                  w2v_model,
+                                                                                                  sim_threshold)
                     elif unit_score == "okapi":
                         s_out += okapi_BM25_unit_score(parameters["id2df"][t_d], cl, parameters['avgdl'],
                                                        termFreq_d[t_d], dl, top_t.count(tq), parameters["k1"],
                                                        parameters["b"], parameters["k3"]) * cossim(id2token[tq],
                                                                                                    id2token[t_d],
                                                                                                    alpha,
-                                                                                                   w2v_model)
+                                                                                                   w2v_model,
+                                                                                                   sim_threshold)
                     else:
                         s_out += lm_unit_score(parameters['clmbda'], parameters['dlmbda'], termFreq_d[t_d], dl,
                                                parameters["id2tf"][t_d], cl) * cossim(id2token[tq],
                                                                                       id2token[t_d],
                                                                                       alpha,
-                                                                                      w2v_model)
+                                                                                      w2v_model,
+                                                                                      sim_threshold)
         sc_bm25[d] += (lamda1 * s_bm25) + (lamda2 * s_in) + (1 - lamda1 - lamda2) * s_out
     return sc_bm25

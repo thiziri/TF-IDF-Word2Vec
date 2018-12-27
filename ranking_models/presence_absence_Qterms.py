@@ -3,6 +3,7 @@
 import pyndri
 import sys
 import json
+import numpy as np
 from tqdm import tqdm
 from tools4text import *
 from function_tools import *
@@ -28,6 +29,7 @@ if __name__ == "__main__":
     token2id, id2token, id2df = index.get_dictionary()
     id2tf = index.get_term_frequencies()
     avgdl = sum([index.document_length(document_id) for document_id in documents]) / len(documents)
+    id2dtf = np.load(config["tf_D"]).item()
     print("Index OK.")
 
     print("\nWord2vec loading ...")
@@ -57,8 +59,8 @@ if __name__ == "__main__":
     print("\n\nModel : ", mod)
 
     resRun = join(config["outputfolder"],
-                  mod + config["collection_name"] + "_with_simCos") + "_alpha" + str(config["alpha"]) + \
-             config["sim_model"]
+                  mod + config["collection_name"] + "_with_simCos") + "_alpha" + str(config["alpha"]) + '_' + \
+             config["sim_model"] + '_thrsh' + str(config["sim_threshold"])
     run = open(resRun, 'w')
 
     tops = {"298": tops["298"]}  # test with 1 query only
@@ -83,15 +85,17 @@ if __name__ == "__main__":
         sc_bm25 = {}
         if config["sim_model"] == "eq2":
             sc_bm25 = allD_allQ_sim(resTop[top], index, top_t, id2token, w2v_model, len(documents), config["alpha"],
-                                    config["model"], parameters, config["if_pseudo_tf"])
+                                    config["model"], parameters, config["if_pseudo_tf"], id2dtf,
+                                    config["sim_threshold"])
         elif config["sim_model"] == "eq3":
             sc_bm25 = allD_QinD_notQinD_sim(resTop[top], index, top_t, id2token, w2v_model, len(documents),
                                             config["alpha"], config["lambda"], config["model"], parameters,
-                                            config["if_pseudo_tf"])
+                                            config["if_pseudo_tf"], id2dtf, config["sim_threshold"])
         elif config["sim_model"] == "eq4":
             sc_bm25 = QinD_QinDothers_allD_QnotInDsim(resTop[top], index, top_t, id2token, w2v_model, len(documents),
                                                       config["alpha"], config["lambda1"], config["lambda2"],
-                                                      config["model"], parameters, config["if_pseudo_tf"])
+                                                      config["model"], parameters, config["if_pseudo_tf"], id2dtf,
+                                                      config["sim_threshold"])
         else:
             print("Model not set: parameter sim_model")
             exit(-1)

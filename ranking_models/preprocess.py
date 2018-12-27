@@ -49,7 +49,7 @@ if __name__ == "__main__":
             for t in doct:  # compute frequency of each word in that doc
                 termFreq_d[t] += 1
         id2dtf[doc] = termFreq_d
-    np.save(join(config["output"]), "id2dtf"+kind+".npy", id2dtf)  # load with: np.load("file.npy").item()
+    np.save(join(config["output"], "id2dtf"+kind+".npy"), id2dtf)  # load with: np.load("file.npy").item()
 
     if config["cptf"]:
         print("Compute pseudo frequency in collection...")

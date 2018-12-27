@@ -19,7 +19,7 @@ from concurrent.futures import as_completed
 def process_docs(doc_grp, index_grp, if_pseudo_tf_grp, alpha_grp, w2v_model_grp, id2token_grp):
     """
     Compute the term frequencies at each document from the documents_grp
-    :param documents_grp: list
+    :param doc_grp: int
     :param index_grp: object
     :param if_pseudo_tf_grp: bool
     :param alpha_grp: float
@@ -38,7 +38,8 @@ def process_docs(doc_grp, index_grp, if_pseudo_tf_grp, alpha_grp, w2v_model_grp,
         for t in doct_grp:  # compute frequency of each word in that doc
             termFreq_d_grp[t] += 1
     id2dtf_grp[doc_grp] = termFreq_d_grp
-    return id2dtf_grp
+    # return id2dtf_grp
+    return doc_grp, termFreq_d_grp
 
 
 def chunk_data(data, n):
@@ -90,10 +91,11 @@ if __name__ == "__main__":
                 # print(future.result())
                 res_list.append(future.result())
         for res in res_list:
-            id2dtf.update(res)
+            # id2dtf.update(res)
+            np.save(join(config["output"], str(res[0]) + kind + ".npy"), res[1])
         # break
 
-    np.save(join(config["output"], "id2dtf"+kind+".npy"), id2dtf)  # load with: np.load("file.npy").item()
+    # np.save(join(config["output"], "id2dtf"+kind+".npy"), id2dtf)  # load with: np.load("file.npy").item()
 
     if config["cptf"]:
         print("Compute pseudo frequency in collection...")
